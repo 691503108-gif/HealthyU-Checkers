@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HealthyU Checkers | เกมหมากฮอส</title>
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: Tahoma, sans-serif;
+    text-align: center;
+    background: #f0f7ff;
+    color: #17345c;
+  }
+
+  h1 { color: #0878cf; margin-bottom: 6px; }
+  .subtitle { color: #60758d; margin-bottom: 20px; }
+
+  .panel {
+    max-width: 540px;
+    margin: auto;
+    padding: 18px;
+    background: white;
+    border-radius: 18px;
+    box-shadow: 0 5px 20px #17345c18;
+  }
+
+  #status {
+    padding: 12px;
+    margin-bottom: 14px;
+    border-radius: 10px;
+    background: #e2f2ff;
+    font-weight: bold;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    width: 100%;
+    aspect-ratio: 1;
+    border: 5px solid #76502e;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .cell {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+    min-width: 0;
+    aspect-ratio: 1;
+  }
+
+  .light { background: #f7e8ca; }
+  .dark { background: #96633e; }
+
+  .selected {
+    background: #55c8ff !important;
+  }
+
+  .possible::after {
+    content: "";
+    width: 28%;
+    height: 28%;
+    background: #8aff86;
+    border: 2px solid #176b24;
+    border-radius: 50%;
+    position: absolute;
+  }
+
+  .piece {
+    width: 76%;
+    height: 76%;
+    border-radius: 50%;
+    position: relative;
+    z-index: 1;
+    border: 3px solid #71351e;
+    box-shadow: 0 3px 3px #0005;
+  }
+
+  .red {
+    background: radial-gradient(circle at 35% 30%, #ff7373, #e00020 65%, #8b0015);
+    border-color: #92051a;
+  }
+
+  .white {
+    background: radial-gradient(circle at 35% 30%, #fff, #f0dfbd 70%, #bca77f);
+    border-color: #a38d65;
+  }
+
+  .king::after {
+    content: "♛";
+    color: #f9d64b;
+    font-size: clamp(14px, 4vw, 28px);
+    text-shadow: 1px 1px 2px #4d3100;
+  }
+
+  .info {
+    display: flex;
+    justify-content: space-around;
+    gap: 10px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+
+  .score {
+    padding: 10px;
+    background: #f2f7ff;
+    border-radius: 10px;
+    flex: 1;
+  }
+
+  button.action {
+    background: #0878cf;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 4px;
+  }
+
+  button.action:hover { background: #075da0; }
+
+  .rules {
+    max-width: 540px;
+    text-align: left;
+    margin: 18px auto;
+    line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<h1>🏆 HealthyU Checkers</h1>
+<div class="subtitle">เกมหมากฮอสสำหรับ 2 ผู้เล่น</div>
+
+<div class="panel">
+  <div id="status">กำลังเริ่มเกม...</div>
+  <div id="board"></div>
+
+  <div class="info">
+    <div class="score">
+      🔴 ฝ่ายแดง<br>
+      <strong id="redScore">12</strong> ตัว
+    </div>
+    <div class="score">
+      ⚪ ฝ่ายขาว<br>
+      <strong id="whiteScore">12</strong> ตัว
+    </div>
+  </div>
+
+  <button class="action" onclick="newGame()">🔄 เริ่มเกมใหม่</button>
+  <button class="action" onclick="undoMove()">↩ ย้อนกลับ</button>
+</div>
+
+<div class="rules">
+  <h3>📘 กติกาการเล่น</h3>
+  <ol>
+    <li>ฝ่ายแดงเริ่มก่อน จากนั้นสลับตากันเดิน</li>
+    <li>คลิกหมากของตัวเอง แล้วคลิกช่องที่ต้องการเดิน</li>
+    <li>หมากธรรมดาเดินเฉียงไปข้างหน้า 1 ช่อง</li>
+    <li>หากกระโดดข้ามหมากคู่แข่งได้ จะกินหมากตัวนั้น</li>
+    <li>เมื่อถึงแถวสุดท้าย หมากจะเลื่อนขั้นเป็นฮอส</li>
+    <li>ผู้เล่นที่กินหมากหมดหรือทำให้อีกฝ่ายเดินไม่ได้เป็นผู้ชนะ</li>
+  </ol>
+</div>
+
+<script>
+const SIZE = 8;
+const boardElement = document.getElementById("board");
+const statusElement = document.getElementById("status");
+
+let board = [];
+let turn = "red";
+let selected = null;
+let moves = [];
+let history = [];
+let gameOver = false;
+
+function newGame() {
+  board = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
+
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if ((r + c) % 2 === 1)
+        board[r][c] = { color: "white", king: false };
+    }
+  }
+
+  for (let r = 5; r < 8; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if ((r + c) % 2 === 1)
+        board[r][c] = { color: "red", king: false };
+    }
+  }
+
+  turn = "red";
+  selected = null;
+  moves = [];
+  history = [];
+  gameOver = false;
+  render();
+}
+
+function inside(r, c) {
+  return r >= 0 && r < SIZE && c >= 0 && c < SIZE;
+}
+
+function directions(piece) {
+  if (piece.king) return [-1, 1];
+  return piece.color === "red" ? [-1] : [1];
+}
+
+function getMoves(r, c, capturesOnly = false) {
+  const piece = board[r][c];
+  if (!piece) return [];
+
+  const result = [];
+
+  for (const dr of directions(piece)) {
+    for (const dc of [-1, 1]) {
+      const nr = r + dr;
+      const nc = c + dc;
+
+      if (!inside(nr, nc)) continue;
+
+      if (board[nr][nc] &&
+          board[nr][nc].color !== piece.color) {
+        const jr = r + dr * 2;
+        const jc = c + dc * 2;
+
+        if (inside(jr, jc) && !board[jr][jc]) {
+          result.push({
+            r: jr, c: jc,
+            capture: true,
+            cr: nr, cc: nc
+          });
+        }
+      } else if (!board[nr][nc] && !capturesOnly) {
+        result.push({
+          r: nr, c: nc,
+          capture: false
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+function allCaptures(color) {
+  const result = [];
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c]?.color === color) {
+        for (const move of getMoves(r, c, true)) {
+          result.push({fromR:r, fromC:c, ...move});
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function allMoves(color) {
+  const captures = allCaptures(color);
+  if (captures.length) return captures;
+
+  const result = [];
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (board[r][c]?.color === color) {
+        for (const move of getMoves(r, c)) {
+          result.push({fromR:r, fromC:c, ...move});
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function clickCell(r, c) {
+  if (gameOver) return;
+
+  const piece = board[r][c];
+
+  if (selected) {
+    const move = moves.find(m => m.r === r && m.c === c);
+
+    if (move) {
+      saveHistory();
+
+      const movingPiece = board[selected.r][selected.c];
+      board[r][c] = movingPiece;
+      board[selected.r][selected.c] = null;
+
+      if (move.capture) {
+        board[move.cr][move.cc] = null;
+      }
+
+      // เลื่อนขั้นเป็นฮอสเมื่อถึงแถวสุดท้าย
+      if ((movingPiece.color === "red" && r === 0) ||
+          (movingPiece.color === "white" && r === 7)) {
+        movingPiece.king = true;
+      }
+
+      // หากกินหมากและยังกินต่อได้ ให้เดินต่อด้วยตัวเดิม
+      if (move.capture && getMoves(r, c, true).length) {
+        selected = {r, c};
+        moves = getMoves(r, c, true);
+        render("กินหมากต่อได้");
+        return;
+      }
+
+      turn = turn === "red" ? "white" : "red";
+      selected = null;
+      moves = [];
+      checkWinner();
+      render();
+      return;
+    }
+  }
+
+  if (piece && piece.color === turn) {
+    const forcedCaptures = allCaptures(turn);
+
+    if (forcedCaptures.length &&
+        !forcedCaptures.some(m => m.fromR === r && m.fromC === c)) {
+      statusElement.textContent = "ต้องเลือกหมากที่สามารถกินหมากคู่แข่งได้";
+      return;
+    }
+
+    selected = {r, c};
+    moves = getMoves(r, c, forcedCaptures.length > 0);
+    render();
+  } else {
+    selected = null;
+    moves = [];
+    render();
+  }
+}
+
+function saveHistory() {
+  history.push({
+    board: board.map(row =>
+      row.map(p => p ? {...p} : null)),
+    turn,
+    gameOver
+  });
+}
+
+function undoMove() {
+  if (!history.length) return;
+
+  const previous = history.pop();
+  board = previous.board;
+  turn = previous.turn;
+  gameOver = previous.gameOver;
+  selected = null;
+  moves = [];
+  render();
+}
+
+function checkWinner() {
+  let red = 0, white = 0;
+
+  for (const row of board) {
+    for (const p of row) {
+      if (p?.color === "red") red++;
+      if (p?.color === "white") white++;
+    }
+  }
+
+  if (red === 0 || allMoves("red").length === 0) {
+    finish("white");
+  } else if (white === 0 || allMoves("white").length === 0) {
+    finish("red");
+  }
+}
+
+function finish(color) {
+  gameOver = true;
+  statusElement.textContent =
+    (color === "red" ? "🔴 ฝ่ายแดง" : "⚪ ฝ่ายขาว") +
+    " เป็นผู้ชนะ! 🎉";
+}
+
+function render(message = "") {
+  boardElement.innerHTML = "";
+
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const cell = document.createElement("button");
+      cell.className = "cell " +
+        ((r + c) % 2 ? "dark" : "light");
+
+      if (selected?.r === r && selected?.c === c)
+        cell.classList.add("selected");
+
+      if (moves.some(m => m.r === r && m.c === c))
+        cell.classList.add("possible");
+
+      const piece = board[r][c];
+
+      if (piece) {
+        const disk = document.createElement("div");
+        disk.className = "piece " + piece.color +
+          (piece.king ? " king" : "");
+        cell.appendChild(disk);
+      }
+
+      cell.setAttribute("aria-label",
+        `แถว ${r+1} คอลัมน์ ${c+1}`);
+      cell.onclick = () => clickCell(r, c);
+      boardElement.appendChild(cell);
+    }
+  }
+
+  let red = 0, white = 0;
+
+  for (const row of board) {
+    for (const p of row) {
+      if (p?.color === "red") red++;
+      if (p?.color === "white") white++;
+    }
+  }
+
+  document.getElementById("redScore").textContent = red;
+  document.getElementById("whiteScore").textContent = white;
+
+  if (!gameOver) {
+    statusElement.textContent = message ||
+      (turn === "red"
+        ? "ตาของฝ่ายแดง 🔴"
+        : "ตาของฝ่ายขาว ⚪");
+  }
+}
+
+newGame();
+</script>
+
+<div class="panel" style="margin:20px auto; max-width:540px;">
+  <h2>📱 สแกน QR Code เพื่อเข้าเกม</h2>
+  <p>ใช้กล้องโทรศัพท์สแกนเพื่อเปิดเกมหมากฮอส</p>
+  <div id="qrcode"
+       style="display:flex; justify-content:center; margin:20px auto;">
+  </div>
+  <p id="qrMessage">กำลังตรวจสอบลิงก์เว็บไซต์...</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  const qrBox = document.getElementById("qrcode");
+  const qrMessage = document.getElementById("qrMessage");
+
+  if (location.protocol === "http:" ||
+      location.protocol === "https:") {
+    new QRCode(qrBox, {
+      text: location.href,
+      width: 200,
+      height: 200
+    });
+    qrMessage.textContent =
+      "สแกน QR Code เพื่อเข้าเล่นเกม";
+  } else {
+    qrMessage.textContent =
+      "กรุณาเผยแพร่เว็บไซต์ก่อน จึงจะสร้าง QR Code ได้";
+  }
+</script>
+</body>
+</html>
